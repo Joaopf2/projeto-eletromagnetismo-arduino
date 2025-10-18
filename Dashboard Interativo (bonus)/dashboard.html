@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard Animado</title>
+
+  <!-- Chart.js UMD build -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.js"></script>
+  <!-- PapaParse para ler CSV -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+  <!-- Fonte Roboto -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0 }
+    body {
+      font-family: 'Roboto', sans-serif;
+      background: #f4f7fc;
+      color: #333;
+      display: flex; flex-direction: column;
+      align-items: center; padding: 20px;
+    }
+    h1 {
+      margin-bottom: 10px;
+      font-size: 2rem;
+      color: #2c3e50;
+    }
+    #controls, #animationControls {
+      background: #fff;
+      padding: 15px 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      text-align: center;
+      width: 100%; max-width: 500px;
+    }
+    #controls input[type="file"] { display: none }
+    #controls p { margin-top: 12px; font-size: .95rem; color: #555 }
+    .btn {
+      background: #2980b9; color: #fff; border: none;
+      padding: 10px 20px; border-radius: 4px; cursor: pointer;
+      font-weight: 500; transition: background .3s; margin: 0 5px;
+    }
+    .btn:hover { background: #1c6690 }
+    canvas {
+      background: #fff; border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      margin-bottom: 30px; max-width: 100%;
+    }
+    .charts {
+      display: flex; flex-direction: column;
+      align-items: center; width: 100%; max-width: 800px;
+    }
+    #animSlider { width: 80%; margin-top: 10px }
+  </style>
+</head>
+<body>
+  <h1>Dashboard Animado</h1>
+
+  <div id="controls">
+    <label class="btn" for="fileInput">Escolher CSV</label>
+    <input type="file" id="fileInput" accept=".csv">
+    <p>Ou arraste um CSV para cá</p>
+  </div>
+
+  <div id="animationControls">
+    <button class="btn" id="animateBtn">▶️ Play</button>
+    <input type="range" id="animSlider" min="0" max="0" value="0">
+  </div>
+
+  <div class="charts">
+    <canvas id="chartIV" height="200"></canvas>
+    <canvas id="chartRV" height="200"></canvas>
+  </div>
+
+  <script>
+    const fileInput  = document.getElementById('fileInput');
+    const btnAnimate = document.getElementById('animateBtn');
+    const animSlider = document.getElementById('animSlider');
+    let chartIV, chartRV;
+    let V = [], I = [], R = [];
+    let animIndex = 0, isPlaying = false, animTimer;
+    const animSpeed = 200; // ms entre cada ponto
+
+    // Carregar CSV via input ou drag&drop
+    fileInput.addEventListener('change', e => parseFile(e.target.files[0]));
+    document.body.addEventListener('dragover', e => e.preventDefault());
+    document.body.addEventListener('drop', e => {
+      e.preventDefault();
+      if (e.dataTransfer.files.length) parseFile(e.dataTransfer.files[0]);
+    });
+
+    // Play/Pause animação
+    btnAnimate.addEventListener('click', () => {
+      if (!V.length) return;
+      isPlaying = !isPlaying;
+      btnAnimate.textContent = isPlaying ? '⏸️ Pause' : '▶️ Play';
+      if (isPlaying) runAnimation();
+      else clearTimeout(animTimer);
+    });
+
+    // Slider controla índice manual
+    animSlider.addEventListener('input', () => {
+      animIndex = +animSlider.value;
+      updateCharts();
+    });
+
+    function parseFile(file) {
+      Papa.parse(file, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        complete: ({ data }) => setupData(data, file.name)
+      });
+    }
+
+    function setupData(data, filename) {
+      const cols = Object.keys(data[0]);
+      const vCol = cols.find(c => /^v_rx/i.test(c));
+      const iCol = cols.find(c => /^i\(/i.test(c));
+      let rCol = cols.find(c => /^r(_|$)/i.test(c));
+      if (!rCol) rCol = cols.find(c => c !== vCol && c !== iCol);
+
+      V = data.map(r => r[vCol]);
+      I = data.map(r => r[iCol]);
+      R = rCol ? data.map(r => r[rCol]) : [];
+
+      animIndex = V.length;
+      animSlider.max = V.length;
+      animSlider.value = V.length;
+
+      createCharts(filename, rCol);
+    }
+
+    function createCharts(name, rColLabel) {
+      if (chartIV) chartIV.destroy();
+      if (chartRV) chartRV.destroy();
+
+      const displayR = rColLabel
+        ? rColLabel.charAt(0).toUpperCase() + rColLabel.slice(1)
+        : '';
+
+      // I × V
+      chartIV = new Chart(
+        document.getElementById('chartIV').getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: V.slice(0, animIndex),
+          datasets: [{
+            label: 'I (A)',
+            data: I.slice(0, animIndex),
+            borderColor: '#2980b9',
+            pointRadius: 4,
+            fill: false
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: { display: true, text: `I×V — ${name}`, font: { size: 18 } }
+          },
+          scales: {
+            x: { title: { display: true, text: 'V_Rx (V)' } },
+            y: { title: { display: true, text: 'I (A)' } }
+          }
+        }
+      });
+
+      // R × V
+      if (R.length) {
+        chartRV = new Chart(
+          document.getElementById('chartRV').getContext('2d'), {
+          type: 'line',
+          data: {
+            labels: V.slice(0, animIndex),
+            datasets: [{
+              label: displayR,
+              data: R.slice(0, animIndex),
+              borderColor: '#e67e22',
+              backgroundColor: '#e67e22',
+              pointRadius: 4,
+              fill: false
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: { display: true, text: `${displayR}×V — ${name}`, font: { size: 18 } }
+            },
+            scales: {
+              x: { title: { display: true, text: 'V_Rx (V)' } },
+              y: { title: { display: true, text: displayR } }
+            }
+          }
+        });
+      }
+    }
+
+    function runAnimation() {
+      // avança um ponto
+      if (animIndex < V.length) {
+        animIndex++;
+        animSlider.value = animIndex;
+        updateCharts();
+        animTimer = setTimeout(runAnimation, animSpeed);
+      } else {
+        isPlaying = false;
+        btnAnimate.textContent = '▶️ Play';
+      }
+    }
+
+    function updateCharts() {
+      chartIV.data.labels = V.slice(0, animIndex);
+      chartIV.data.datasets[0].data = I.slice(0, animIndex);
+      chartIV.update();
+
+      if (chartRV) {
+        chartRV.data.labels = V.slice(0, animIndex);
+        chartRV.data.datasets[0].data = R.slice(0, animIndex);
+        chartRV.update();
+      }
+    }
+  </script>
+</body>
+</html>
