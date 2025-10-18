@@ -30,3 +30,12 @@ Arduino IDE
 
 .Software para visualização de PDF
 
+1. Clone este repositório:
+
+git clone https://github.com/Joaopf2/projeto-eletromagnetismo-arduino.git
+
+2. Abra o arquivo Código do Projeto.ino na Arduino IDE
+
+3. Carregue o código para sua placa Arduino
+
+4. Siga as instruções do relatório para montagem do circuito
